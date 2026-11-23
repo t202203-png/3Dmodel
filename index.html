@@ -1,0 +1,493 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>존중의 언어 갤러리</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&display=swap">
+<style>
+  /* Layout: full-screen 3D room; frosted cards float over the scene (top-left title, bottom thumbnail dock, side info card). Single light look by choice. */
+  :root {
+    color-scheme: light;
+    --ink: #191f28;
+    --ink-2: #4e5968;
+    --ink-3: #8b95a1;
+    --card: rgba(255, 255, 255, 0.86);
+    --line: rgba(25, 31, 40, 0.08);
+    --accent: #3182f6;
+    --accent-soft: #e8f3ff;
+    --wall: #efece6;
+    --font: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--wall); color: var(--ink); font-family: var(--font); overflow: hidden; -webkit-font-smoothing: antialiased; }
+  #stage { position: fixed; inset: 0; touch-action: none; cursor: grab; }
+  #stage.dragging { cursor: grabbing; }
+  #stage canvas { display: block; width: 100%; height: 100%; }
+
+  .card { background: var(--card); backdrop-filter: blur(14px) saturate(1.4); -webkit-backdrop-filter: blur(14px) saturate(1.4); border-radius: 20px; box-shadow: 0 8px 28px rgba(25, 31, 40, 0.12); }
+
+  #intro { position: fixed; top: calc(16px + env(safe-area-inset-top, 0px)); left: max(16px, env(safe-area-inset-left, 0px)); padding: 16px 20px; max-width: min(340px, calc(100vw - 32px)); }
+  #intro .eyebrow { font-size: 12px; font-weight: 700; color: var(--accent); letter-spacing: 0.04em; }
+  #intro h1 { margin: 4px 0 6px; font-size: 22px; font-weight: 800; letter-spacing: -0.02em; text-wrap: balance; }
+  #intro p { margin: 0; font-size: 13px; line-height: 1.55; color: var(--ink-2); }
+  #intro .keys { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+  #intro .keys span { font-size: 12px; color: var(--ink-2); background: rgba(25, 31, 40, 0.05); padding: 4px 9px; border-radius: 999px; }
+
+  #dock { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); display: flex; align-items: center; gap: 8px; padding: 8px; max-width: calc(100vw - 32px); overflow-x: auto; }
+  #dock button { border: 0; background: transparent; padding: 0; cursor: pointer; font: inherit; }
+  .thumb { position: relative; width: 52px; height: 68px; border-radius: 12px; overflow: hidden; flex: none; outline: 2px solid transparent; outline-offset: 2px; transition: outline-color .2s, transform .2s; }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .thumb b { position: absolute; left: 4px; bottom: 4px; font-size: 10px; font-weight: 800; color: #fff; background: rgba(25, 31, 40, 0.6); border-radius: 6px; padding: 1px 5px; font-variant-numeric: tabular-nums; }
+  .thumb:hover { transform: translateY(-2px); }
+  .thumb.on { outline-color: var(--accent); }
+  .home { width: 52px; height: 68px; border-radius: 12px; background: rgba(25, 31, 40, 0.05) !important; color: var(--ink-2); font-size: 11px !important; font-weight: 700; display: grid; place-items: center; flex: none; line-height: 1.3; }
+  .home:hover { background: var(--accent-soft) !important; color: var(--accent); }
+  button:focus-visible { outline: 2px solid var(--accent) !important; outline-offset: 2px; }
+
+  #info { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: 50%; transform: translateY(-50%); width: 300px; padding: 22px; transition: opacity .3s, transform .3s; }
+  #info.off { opacity: 0; pointer-events: none; transform: translateY(-50%) translateX(12px); }
+  #info .no { font-size: 12px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+  #info h2 { margin: 6px 0 4px; font-size: 19px; line-height: 1.35; font-weight: 800; letter-spacing: -0.02em; text-wrap: balance; }
+  #info .theme { display: inline-block; font-size: 12px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 4px 10px; margin: 6px 0 12px; }
+  #info p { margin: 0 0 16px; font-size: 14px; line-height: 1.65; color: var(--ink-2); }
+  #info .row { display: flex; gap: 8px; }
+  #info .row button { flex: 1; height: 44px; border: 0; border-radius: 12px; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+  .btn-sub { background: rgba(25, 31, 40, 0.06); color: var(--ink-2); }
+  .btn-sub:hover { background: rgba(25, 31, 40, 0.1); }
+  .btn-main { background: var(--accent); color: #fff; }
+  .btn-main:hover { background: #1b64da; }
+  #info .x { position: absolute; top: 12px; right: 12px; width: 32px; height: 32px; border: 0; border-radius: 10px; background: transparent; color: var(--ink-3); font-size: 20px; cursor: pointer; line-height: 1; }
+  #info .x:hover { background: rgba(25, 31, 40, 0.06); }
+
+  #lightbox { position: fixed; inset: 0; background: rgba(15, 18, 24, 0.88); display: grid; place-items: center; padding: calc(56px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); z-index: 20; }
+  #lightbox img { max-width: 100%; max-height: 100%; border-radius: 6px; box-shadow: 0 20px 60px rgba(0, 0, 0, .5); }
+  #lightbox button { position: absolute; top: calc(12px + env(safe-area-inset-top, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); height: 40px; padding: 0 16px; border: 0; border-radius: 12px; background: rgba(255, 255, 255, .14); color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+
+  #loading { position: fixed; inset: 0; display: grid; place-items: center; background: var(--wall); z-index: 30; transition: opacity .5s; font-size: 14px; color: var(--ink-2); font-weight: 500; }
+  #loading.done { opacity: 0; pointer-events: none; }
+  #loading .bar { width: 160px; height: 4px; border-radius: 4px; background: rgba(25, 31, 40, .08); margin-top: 12px; overflow: hidden; }
+  #loading .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+
+  @media (max-width: 720px) {
+    #intro { padding: 12px 14px; }
+    #intro h1 { font-size: 18px; }
+    #intro p, #intro .keys .pc { display: none; }
+    body.focus #intro { display: none; }
+    #info { top: auto; bottom: calc(108px + env(safe-area-inset-bottom, 0px)); transform: none; left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); width: auto; padding: 18px; }
+    #info.off { transform: translateY(12px); }
+    #info p { font-size: 13px; margin-bottom: 12px; }
+    #info h2 { font-size: 17px; padding-right: 28px; }
+  }
+  @media (max-width: 720px) and (max-height: 700px) { #info p { display: none; } }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div id="stage"></div>
+
+<div id="intro" class="card">
+  <div class="eyebrow">혐오 표현 개선 캠페인 포스터</div>
+  <h1>존중의 언어 갤러리</h1>
+  <p>학생 작품 5점을 전시했어요. 작품을 누르면 앞으로 다가가 자세히 볼 수 있어요.</p>
+  <div class="keys">
+    <span>드래그: 둘러보기</span>
+    <span class="pc">W A S D · 방향키: 걷기</span>
+    <span>바닥 누르기: 그곳으로 이동</span>
+    <span>작품 누르기: 감상</span>
+  </div>
+</div>
+
+<div id="info" class="card off" aria-live="polite">
+  <button class="x" id="infoClose" aria-label="감상 닫기">×</button>
+  <div class="no" id="infoNo"></div>
+  <h2 id="infoTitle"></h2>
+  <span class="theme" id="infoTheme"></span>
+  <p id="infoDesc"></p>
+  <div class="row">
+    <button class="btn-sub" id="prevBtn">이전 작품</button>
+    <button class="btn-sub" id="nextBtn">다음 작품</button>
+    <button class="btn-main" id="zoomBtn">크게 보기</button>
+  </div>
+</div>
+
+<nav id="dock" class="card" aria-label="작품 바로가기"></nav>
+
+<div id="lightbox" hidden>
+  <button id="lbClose">닫기</button>
+  <img id="lbImg" alt="">
+</div>
+
+<div id="loading"><div><div>전시장을 준비하고 있어요</div><div class="bar"><i id="loadBar"></i></div></div></div>
+
+<script type="importmap">
+  { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from "three";
+
+/* ───── 작품 정보 (학생 이름·제목은 여기서 고치면 됩니다) ───── */
+const WORKS = [
+  { src: "works/01.webp", thumb: "works/thumb01.webp", title: "장애인은 비정상인이 아닙니다", theme: "장애 차별 표현", student: "",
+    desc: "‘정상인’이라는 말을 물로 씻어 내고 그 자리에 ‘비장애인’을 새로 적었어요. 서로 다름을 인정하고 배려하는 말을 쓰자고 제안합니다." },
+  { src: "works/02.webp", thumb: "works/thumb02.webp", title: "곰보다 못한 사람이 되실 겁니까?", theme: "차별 없는 어울림", student: "",
+    desc: "생김새가 다른 곰 삼형제도 서로 어울려 지냅니다. 올바른 언어로 차별 없이 함께 지내자고 재치 있게 묻습니다." },
+  { src: "works/03.webp", thumb: "works/thumb03.webp", title: "모두가 빛날 수 있습니다", theme: "인종·국적 존중", student: "",
+    desc: "여러 색이 모여 무지개가 되듯, 서로 다른 인종과 국적이 함께 빛납니다. ‘블랙리스트’는 ‘블록리스트’로, ‘블랙 컨슈머’는 ‘악성 소비자’로 바꿔 부르자고 말합니다." },
+  { src: "works/04.webp", thumb: "works/thumb04.webp", title: "우리의 안전은 고운 말 한마디로 만들어집니다", theme: "직업 비하 표현", student: "",
+    desc: "경찰관을 낮잡아 부르는 말 대신 “고생 많으세요! 덕분에 안전해요”라고 말해 보면 어떨까요. 혐오 표현 대신 존중하는 언어를 쓰자고 이야기합니다." },
+  { src: "works/05.webp", thumb: "works/thumb05.webp", title: "나도, 당신도, 우리 모두도", theme: "성별 혐오 표현", student: "",
+    desc: "성별을 깎아내리는 혐오 표현은 땅속에 묻고, 공감과 존중의 말이 새싹으로 자라납니다. 말 한마디가 존중의 씨앗이 된다는 메시지를 담았어요." },
+];
+
+/* ───── 전시장 크기 ───── */
+const RW = 14, RD = 18, RH = 4.2;            // 가로, 세로, 높이 (m)
+const EYE = 1.6;
+const ART_W = 1.7, ART_Y = 2.0;
+const HALF_W = RW / 2, HALF_D = RD / 2;
+
+// 벽면 배치: 왼쪽 벽 2점 → 안쪽 벽 1점 → 오른쪽 벽 2점 (관람 동선 순서)
+const SLOTS = [
+  { x: -HALF_W, z:  2.6, ry:  Math.PI / 2 },
+  { x: -HALF_W, z: -3.6, ry:  Math.PI / 2 },
+  { x: 0,       z: -HALF_D, ry: 0 },
+  { x:  HALF_W, z: -3.6, ry: -Math.PI / 2 },
+  { x:  HALF_W, z:  2.6, ry: -Math.PI / 2 },
+];
+
+const stage = document.getElementById("stage");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+stage.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xefece6);
+const camera = new THREE.PerspectiveCamera(62, 1, 0.05, 100);
+
+/* ───── 재질용 캔버스 텍스처 ───── */
+function woodTexture() {
+  const c = document.createElement("canvas"); c.width = 1024; c.height = 1024;
+  const g = c.getContext("2d");
+  const rows = 8, h = c.height / rows;
+  for (let r = 0; r < rows; r++) {
+    let x = -(r % 2) * 256 - Math.random() * 200;
+    while (x < c.width) {
+      const len = 380 + Math.random() * 300;
+      const l = 70 + Math.random() * 8, s = 32 + Math.random() * 10;
+      g.fillStyle = `hsl(${30 + Math.random() * 6}, ${s}%, ${l}%)`;
+      g.fillRect(x, r * h, len, h);
+      g.globalAlpha = 0.08;
+      for (let k = 0; k < 14; k++) {
+        g.strokeStyle = Math.random() > .5 ? "#7a5634" : "#ffffff";
+        g.lineWidth = 1 + Math.random() * 2;
+        const y = r * h + Math.random() * h;
+        g.beginPath(); g.moveTo(x, y);
+        g.bezierCurveTo(x + len * .3, y + (Math.random() - .5) * 10, x + len * .6, y + (Math.random() - .5) * 10, x + len, y);
+        g.stroke();
+      }
+      g.globalAlpha = 1;
+      g.fillStyle = "rgba(90,60,35,.35)";
+      g.fillRect(x, r * h, 2, h);
+      x += len;
+    }
+    g.fillStyle = "rgba(90,60,35,.3)";
+    g.fillRect(0, r * h, c.width, 2);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(RW / 4, RD / 4);
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return t;
+}
+
+/* ───── 방 ───── */
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(RW, RD), new THREE.MeshStandardMaterial({ map: woodTexture(), roughness: 0.55 }));
+floor.rotation.x = -Math.PI / 2;
+floor.name = "floor";
+scene.add(floor);
+
+const ceil = new THREE.Mesh(new THREE.PlaneGeometry(RW, RD), new THREE.MeshBasicMaterial({ color: 0xe9e6e0 }));
+ceil.rotation.x = Math.PI / 2; ceil.position.y = RH;
+scene.add(ceil);
+
+const wallMat = new THREE.MeshStandardMaterial({ color: 0xf7f4ef, roughness: 0.95 });
+function wall(w, x, z, ry) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, RH), wallMat);
+  m.position.set(x, RH / 2, z); m.rotation.y = ry; scene.add(m);
+  const base = new THREE.Mesh(new THREE.BoxGeometry(w, 0.12, 0.02), new THREE.MeshStandardMaterial({ color: 0xd9d3c8, roughness: .8 }));
+  base.position.set(x, 0.06, z); base.rotation.y = ry;
+  base.translateZ(0.01); scene.add(base);
+}
+wall(RW, 0, -HALF_D, 0);
+wall(RW, 0,  HALF_D, Math.PI);
+wall(RD, -HALF_W, 0,  Math.PI / 2);
+wall(RD,  HALF_W, 0, -Math.PI / 2);
+
+// 천장 조명 패널
+const panelMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+for (const z of [-5, 0, 5]) {
+  const p = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 0.5), panelMat);
+  p.rotation.x = Math.PI / 2; p.position.set(0, RH - 0.01, z); scene.add(p);
+}
+
+// 가운데 벤치
+const benchMat = new THREE.MeshStandardMaterial({ color: 0xc9a77e, roughness: .6 });
+const legMat = new THREE.MeshStandardMaterial({ color: 0x2b2f36, roughness: .5, metalness: .3 });
+const bench = new THREE.Group();
+const seat = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.08, 0.6), benchMat); seat.position.y = 0.44; bench.add(seat);
+for (const sx of [-1.05, 1.05]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.4, 0.5), legMat); leg.position.set(sx, 0.2, 0); bench.add(leg); }
+bench.position.set(0, 0, -1); bench.rotation.y = Math.PI / 2;
+scene.add(bench);
+
+// 조명
+scene.add(new THREE.HemisphereLight(0xffffff, 0xe6dccd, 1.7));
+const fill = new THREE.DirectionalLight(0xfff6ea, 0.9); fill.position.set(2, 6, 4); scene.add(fill);
+
+/* ───── 작품 걸기 ───── */
+const loader = new THREE.TextureLoader();
+const artMeshes = [];
+const viewPoints = [];
+let loaded = 0;
+const loadBar = document.getElementById("loadBar");
+
+function plaqueTexture(i, w) {
+  const c = document.createElement("canvas"); c.width = 640; c.height = 300;
+  const g = c.getContext("2d");
+  g.fillStyle = "#ffffff"; g.fillRect(0, 0, c.width, c.height);
+  g.fillStyle = "#3182f6"; g.font = "800 34px 'Noto Sans KR', sans-serif";
+  g.fillText(`작품 ${String(i + 1).padStart(2, "0")}`, 36, 64);
+  g.fillStyle = "#191f28"; g.font = "800 40px 'Noto Sans KR', sans-serif";
+  // 제목 줄바꿈
+  const words = w.title.split(" "); let line = "", y = 130;
+  for (const wd of words) {
+    const test = line ? line + " " + wd : wd;
+    if (g.measureText(test).width > 560 && line) { g.fillText(line, 36, y); line = wd; y += 52; }
+    else line = test;
+  }
+  g.fillText(line, 36, y);
+  g.fillStyle = "#8b95a1"; g.font = "500 28px 'Noto Sans KR', sans-serif";
+  g.fillText(w.student ? `${w.theme} · ${w.student}` : w.theme, 36, Math.min(y + 60, 276));
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return t;
+}
+
+function hang(i, tex) {
+  const w = WORKS[i], s = SLOTS[i];
+  const img = tex.image, aspect = img.height / img.width;
+  const aw = ART_W, ah = ART_W * aspect;
+  const g = new THREE.Group();
+  g.position.set(s.x, 0, s.z); g.rotation.y = s.ry;
+
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(aw + 0.34, ah + 0.34, 0.06), new THREE.MeshStandardMaterial({ color: 0x2a2521, roughness: .45 }));
+  frame.position.set(0, ART_Y, 0.03); g.add(frame);
+  const mat = new THREE.Mesh(new THREE.PlaneGeometry(aw + 0.22, ah + 0.22), new THREE.MeshStandardMaterial({ color: 0xfbfaf7, roughness: .9 }));
+  mat.position.set(0, ART_Y, 0.061); g.add(mat);
+  const art = new THREE.Mesh(new THREE.PlaneGeometry(aw, ah), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
+  art.position.set(0, ART_Y, 0.063); art.userData.index = i; g.add(art);
+  artMeshes.push(art);
+
+  const plaque = new THREE.Mesh(new THREE.PlaneGeometry(0.48, 0.225), new THREE.MeshBasicMaterial({ map: plaqueTexture(i, w), toneMapped: false }));
+  plaque.position.set(aw / 2 + 0.55, 1.45, 0.012); plaque.userData.index = i; g.add(plaque);
+  artMeshes.push(plaque);
+
+  // 레일 조명
+  const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.22, 20), legMat);
+  lamp.position.set(0, RH - 0.2, 1.5); lamp.rotation.x = -0.6; g.add(lamp);
+  const spot = new THREE.SpotLight(0xfff1dc, 26, 0, 0.42, 0.65, 1.6);
+  spot.position.set(0, RH - 0.25, 1.5);
+  spot.target.position.set(0, ART_Y - 0.1, 0);
+  g.add(spot); g.add(spot.target);
+
+  scene.add(g);
+  g.updateMatrixWorld(true);
+
+  // 감상 위치 (작품 정면 2.6m)
+  const normal = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), s.ry);
+  const center = new THREE.Vector3(s.x, ART_Y, s.z);
+  const dist = Math.max(3.1, ah * 1.4);
+  viewPoints[i] = { pos: center.clone().addScaledVector(normal, dist).setY(EYE + 0.1), look: center.clone().setY(ART_Y - 0.05) };
+}
+
+/* ───── 카메라 조작 ───── */
+const START = { pos: new THREE.Vector3(0, EYE, 7.6), yaw: 0, pitch: -0.02 };
+let yaw = START.yaw, pitch = START.pitch;
+const pos = START.pos.clone();
+let anim = null;       // { from, to, t, dur }
+let focused = -1;
+
+function applyCamera() {
+  camera.position.copy(pos);
+  camera.rotation.set(pitch, yaw, 0, "YXZ");
+}
+function lookAngles(from, to) {
+  const d = to.clone().sub(from);
+  return { yaw: Math.atan2(-d.x, -d.z), pitch: Math.atan2(d.y, Math.hypot(d.x, d.z)) };
+}
+function flyTo(targetPos, targetYaw, targetPitch, dur = 1.1) {
+  let dy = targetYaw - yaw;
+  dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+  anim = { p0: pos.clone(), p1: targetPos.clone(), y0: yaw, y1: yaw + dy, a0: pitch, a1: targetPitch, t: 0, dur };
+}
+const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const clampPos = p => { p.x = THREE.MathUtils.clamp(p.x, -HALF_W + 0.7, HALF_W - 0.7); p.z = THREE.MathUtils.clamp(p.z, -HALF_D + 0.7, HALF_D - 0.7); };
+
+/* ───── UI ───── */
+const $ = id => document.getElementById(id);
+const info = $("info");
+const dock = $("dock");
+WORKS.forEach((w, i) => {
+  const b = document.createElement("button");
+  b.className = "thumb"; b.setAttribute("aria-label", `작품 ${i + 1}: ${w.title}`);
+  b.innerHTML = `<img src="${w.thumb}" alt=""><b>${String(i + 1).padStart(2, "0")}</b>`;
+  b.addEventListener("click", () => focusWork(i));
+  dock.appendChild(b);
+});
+const home = document.createElement("button");
+home.className = "home"; home.innerHTML = "처음<br>위치로";
+home.addEventListener("click", () => { unfocus(); flyTo(START.pos, START.yaw, START.pitch); });
+dock.appendChild(home);
+
+function focusWork(i) {
+  focused = i;
+  const v = viewPoints[i];
+  if (v) { const a = lookAngles(v.pos, v.look); flyTo(v.pos, a.yaw, a.pitch); }
+  const w = WORKS[i];
+  $("infoNo").textContent = `작품 ${String(i + 1).padStart(2, "0")} / ${String(WORKS.length).padStart(2, "0")}`;
+  $("infoTitle").textContent = w.title;
+  $("infoTheme").textContent = w.student ? `${w.theme} · ${w.student}` : w.theme;
+  $("infoDesc").textContent = w.desc;
+  info.classList.remove("off");
+  document.body.classList.add("focus");
+  [...dock.querySelectorAll(".thumb")].forEach((t, k) => t.classList.toggle("on", k === i));
+}
+function unfocus() {
+  focused = -1;
+  info.classList.add("off");
+  document.body.classList.remove("focus");
+  dock.querySelectorAll(".thumb").forEach(t => t.classList.remove("on"));
+}
+$("infoClose").onclick = unfocus;
+$("prevBtn").onclick = () => focusWork((focused - 1 + WORKS.length) % WORKS.length);
+$("nextBtn").onclick = () => focusWork((focused + 1) % WORKS.length);
+$("zoomBtn").onclick = () => { $("lbImg").src = WORKS[focused].src; $("lbImg").alt = WORKS[focused].title; $("lightbox").hidden = false; };
+$("lbClose").onclick = () => { $("lightbox").hidden = true; };
+$("lightbox").addEventListener("click", e => { if (e.target.id === "lightbox") $("lightbox").hidden = true; });
+
+/* ───── 입력 ───── */
+const keys = new Set();
+addEventListener("keydown", e => {
+  if (e.key === "Escape") { if (!$("lightbox").hidden) $("lightbox").hidden = true; else unfocus(); return; }
+  if (!$("lightbox").hidden) return;
+  if (focused >= 0 && (e.key === "]" || e.key === "PageDown")) { focusWork((focused + 1) % WORKS.length); return; }
+  const k = e.key.toLowerCase();
+  if (["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(k)) {
+    keys.add(k); anim = null; e.preventDefault();
+  }
+});
+addEventListener("keyup", e => keys.delete(e.key.toLowerCase()));
+addEventListener("blur", () => keys.clear());
+
+const ray = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+let drag = null;
+stage.addEventListener("pointerdown", e => {
+  stage.setPointerCapture(e.pointerId);
+  drag = { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now() };
+});
+stage.addEventListener("pointermove", e => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  drag.x = e.clientX; drag.y = e.clientY;
+  if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 5) {
+    stage.classList.add("dragging");
+    anim = null;
+    const k = e.pointerType === "touch" ? 0.005 : 0.0035;
+    yaw += dx * k; pitch += dy * k;
+    pitch = THREE.MathUtils.clamp(pitch, -1.1, 1.1);
+  }
+});
+stage.addEventListener("pointerup", e => {
+  if (!drag) return;
+  const moved = Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy);
+  stage.classList.remove("dragging");
+  drag = null;
+  if (moved > 5) return;
+  const r = stage.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hitArt = ray.intersectObjects(artMeshes)[0];
+  const hitFloor = ray.intersectObject(floor)[0];
+  if (hitArt && (!hitFloor || hitArt.distance < hitFloor.distance)) { focusWork(hitArt.object.userData.index); return; }
+  if (hitFloor) {
+    unfocus();
+    const p = hitFloor.point.clone().setY(EYE); clampPos(p);
+    const dur = Math.min(1.6, 0.4 + p.distanceTo(pos) * 0.12);
+    flyTo(p, yaw, pitch, dur);
+  }
+});
+stage.addEventListener("pointercancel", () => { drag = null; stage.classList.remove("dragging"); });
+stage.addEventListener("wheel", e => {
+  e.preventDefault(); anim = null;
+  const f = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+  pos.addScaledVector(f, -e.deltaY * 0.004); clampPos(pos);
+}, { passive: false });
+
+/* ───── 루프 ───── */
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.fov = w / h < 0.8 ? 74 : 62;
+  camera.updateProjectionMatrix();
+}
+addEventListener("resize", resize);
+resize();
+
+const clock = new THREE.Clock();
+function tick() {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if (keys.size) {
+    if (focused >= 0) unfocus();
+    const fwd = (keys.has("w") || keys.has("arrowup") ? 1 : 0) - (keys.has("s") || keys.has("arrowdown") ? 1 : 0);
+    const side = (keys.has("d") ? 1 : 0) - (keys.has("a") ? 1 : 0);
+    const turn = (keys.has("arrowleft") ? 1 : 0) - (keys.has("arrowright") ? 1 : 0);
+    yaw += turn * 1.6 * dt;
+    const f = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+    const rgt = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+    pos.addScaledVector(f, fwd * 3 * dt).addScaledVector(rgt, side * 3 * dt);
+    clampPos(pos);
+  }
+  if (anim) {
+    anim.t = Math.min(1, anim.t + dt / anim.dur);
+    const k = ease(anim.t);
+    pos.lerpVectors(anim.p0, anim.p1, k);
+    yaw = anim.y0 + (anim.y1 - anim.y0) * k;
+    pitch = anim.a0 + (anim.a1 - anim.a0) * k;
+    if (anim.t >= 1) anim = null;
+  }
+  applyCamera();
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+
+/* ───── 시작 ───── */
+(async () => {
+  try { await document.fonts.load("800 40px 'Noto Sans KR'"); await document.fonts.load("500 28px 'Noto Sans KR'"); } catch (e) {}
+  await Promise.all(WORKS.map((w, i) => new Promise(res => {
+    loader.load(w.src, tex => {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      hang(i, tex);
+      loaded++; loadBar.style.width = (loaded / WORKS.length * 100) + "%";
+      res();
+    }, undefined, () => { loaded++; res(); });
+  })));
+  applyCamera();
+  tick();
+  setTimeout(() => $("loading").classList.add("done"), 200);
+})();
+</script>
